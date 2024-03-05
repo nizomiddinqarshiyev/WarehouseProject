@@ -252,14 +252,5 @@ async def client_order(
     return order_list
 
 
-@market_router.get("/orders_user_id")
-async def get_orders(
-        user_id: int,
-        session: AsyncSession = Depends()
-):
-    query = select(Order).where(Order.user_id == user_id)
-    order = session.scalars(query)
-    print(order)
-    return {'success': True, 'message': 'get data'}
 
 
