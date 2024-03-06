@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List
 from fastapi import HTTPException, APIRouter, Depends
 from sqlalchemy import select, update, insert, delete
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 # from sqlalchemy.orm import session,
 import asyncio
@@ -50,7 +51,6 @@ async def get_all_products(
                 'name': unit__data.name,
                 'code': unit__data.code,
             },
-            'amount': product.amount,
             'price': product.price
 
         })
@@ -65,30 +65,46 @@ async def get_product(
     query = select(Product).where(Product.id == product_id)
     product_data = await session.execute(query)
     product = product_data.scalars().first()
-    unit_query = select(Unit).where(Unit.id == product.unit_id)
-    units = await session.execute(unit_query)
-    unit__data = units.scalars().one()
-    cat_query = select(Category).where(Category.id == product.category_id)
-    category = await session.execute(cat_query)
-    category__data = category.scalars().one()
-    data = {
-        'id': product.id,
-        'name': product.name,
-        'description': product.description,
-        'category': {
-            'id': category__data.id,
-            'name': category__data.name,
-            'description': category__data.description
-        },
-        'unit': {
-            'id': unit__data.id,
-            'name': unit__data.name,
-            'code': unit__data.code,
-        },
-        'amount': product.amount,
-        'price': product.price
-    }
-    return data
+    if product:
+        unit_query = select(Unit).where(Unit.id == product.unit_id)
+        units = await session.execute(unit_query)
+        unit__data = units.scalars().one()
+        cat_query = select(Category).where(Category.id == product.category_id)
+        category = await session.execute(cat_query)
+        category__data = category.scalars().one()
+        data = {
+            'id': product.id,
+            'name': product.name,
+            'description': product.description,
+            'category': {
+                'id': category__data.id,
+                'name': category__data.name,
+                'description': category__data.description
+            },
+            'unit': {
+                'id': unit__data.id,
+                'name': unit__data.name,
+                'code': unit__data.code,
+            },
+            'price': product.price
+        }
+        return data
+    else:
+        raise HTTPException(status_code=400, detail='Product does not exist')
+
+
+@market_router.get('/sort-by-category')
+async def sort_by_category(
+        category_id: int,
+        session: AsyncSession = Depends(get_async_session)
+):
+    category_query = select(Product).where(Product.id == category_id)
+    products = await session.execute(category_query)
+    product_data = products.scalars().all()
+    if product_data:
+        return product_data
+    else:
+        raise HTTPException(status_code=400, detail='Products does not exist')
 
 
 @market_router.post("/add-product")
@@ -98,7 +114,7 @@ async def add_product(
         session: AsyncSession = Depends(get_async_session)
 
 ):
-    if permission(token['user_id'], session, ['admin', 'boss']):
+    if await permission(token['user_id'], session, ['admin', 'boss']):
         query = insert(Product).values(**product_data.dict())
         await session.execute(query)
         await session.commit()
@@ -113,18 +129,29 @@ async def update_product(
         product_new: ProductUpdateScheme,
         session: AsyncSession = Depends(get_async_session)
 ):
-    db_item = await session.get(Product, product_id)
-    if product_new.name:
-        db_item.name = product_new.name
-    elif product_new.description:
-        db_item.description = product_new.description
-    elif product_new.price:
-        db_item.price = product_new.price
-    elif product_new.amount:
-        db_item.amount = product_new.amount
+    # db_item = await session.get(Product, product_id)
+    # print(product_new.name, product_new.price, product_new.description)
+    # if product_new.name:
+    #     db_item.name = product_new.name
+    #     await session.commit()
+    # elif product_new.description:
+    #     db_item.description = product_new.description
+    #     await session.commit()
+    # elif product_new.price:
+    #     db_item.price = product_new.price
+    #     await session.commit()
+    product_query = select(Product).where(Product.id == product_id)
+    product = await session.execute(product_query)
+    dic = {}
+    for new_data_key, new_data_val in product_new.dict().items():
+        if new_data_val:
+            dic[new_data_key] = new_data_val
+    if product:
+        query = update(Product).where(Product.id == product_id).values(**dic)
+        data = await session.execute(query)
     else:
         raise HTTPException(status_code=400, detail="Product cannot be updated")
-    db_item.last_updated = datetime.now()
+    # db_item.last_updated = datetime.now()
     await session.commit()
     return {'success': True, 'message': 'Product updated'}
 
@@ -194,29 +221,31 @@ async def create_oder(
         product__data = product_data.scalars().one()
         product_list.append(product__data)
         total_price += product__data.price*product.quantity
-
-    query = insert(OrderDetail).values(
-        user_id=token['user_id'],
-        costumer=costumer_id,
-        total_price=total_price, paid=paid,
-        created_at=datetime.now()
-    )
-    await session.execute(query)
-    await session.commit()
-    order_query = select(OrderDetail).where(
-        (OrderDetail.user_id == token['user_id']) &
-        (OrderDetail.costumer == costumer_id))
-    order = await session.execute(order_query)
-    order_data = order.scalars().all()
-    for product in products:
-        query = insert(Order).values(
-            product_id=product.product_id,
-            count=product.quantity,
-            order_detail_id=order_data[-1].id
+    if product_list:
+        query = insert(OrderDetail).values(
+            user_id=token['user_id'],
+            costumer=costumer_id,
+            total_price=total_price, paid=paid,
+            created_at=datetime.now()
         )
         await session.execute(query)
         await session.commit()
-    return {'success': True, 'message': 'Order successfully created'}
+        order_query = select(OrderDetail).where(
+            (OrderDetail.user_id == token['user_id']) &
+            (OrderDetail.costumer == costumer_id))
+        order = await session.execute(order_query)
+        order_data = order.scalars().all()
+        for product in products:
+            query = insert(Order).values(
+                product_id=product.product_id,
+                count=product.quantity,
+                order_detail_id=order_data[-1].id
+            )
+            await session.execute(query)
+            await session.commit()
+        return {'success': True, 'message': 'Order successfully created'}
+    else:
+        raise HTTPException(status_code=400, detail='No result found')
 
 
 @market_router.get('/client-orders/')

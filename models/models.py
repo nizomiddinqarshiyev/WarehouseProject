@@ -1,7 +1,7 @@
 from sqlalchemy import (
     Column, ForeignKey, Integer, String,
     Text, TIMESTAMP, DECIMAL, UniqueConstraint,
-    Enum, MetaData, Boolean, Float, Date
+    Enum, MetaData, Boolean, Float, Date, event
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -19,10 +19,18 @@ class Product(Base):
     name = Column('name', String)
     description = Column('description', String)
     category_id = Column('category', Integer, ForeignKey('category.id'))
-    amount = Column('amount', Integer)
     unit_id = Column('unit', Integer, ForeignKey('unit.id'))
     price = Column('price', Float)
     last_updated = Column('last_updated', TIMESTAMP(), default=datetime.utcnow())
+
+    # def update(self):
+    #     self.last_updated = datetime.utcnow()
+    #     return self.id
+
+
+# @event.listens_for(Product, 'before_update')
+# def before_update_listener(mapper, connection, target):
+#     target.last_updated = datetime.utcnow()
 
 
 class Unit(Base):
@@ -88,6 +96,7 @@ class Order(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     metadata = metadata
     product_id = Column('product_id', Integer, ForeignKey('product.id'))
+    warehouse_id = Column('warehouse_id', Integer, ForeignKey('warehouse.id'))
     order_detail_id = Column('order_detail_id', Integer, ForeignKey('order_detail.id'))
     count = Column('count', Integer)
 
@@ -136,9 +145,10 @@ class ProductHistory(Base):
     metadata = metadata
     id = Column('id', Integer, primary_key=True, autoincrement=True)
     product_id = Column('product_id', Integer, ForeignKey('product.id'))
-    warehouse1_id = Column('warehouse1_id', Integer, ForeignKey('warehouse.id'))
-    warehouse2_id = Column('warehouse2_id', Integer, ForeignKey('warehouse.id'))
+    warehouse_old_id = Column('warehouse_old_id', Integer, ForeignKey('warehouse.id'))
+    warehouse_new_id = Column('warehouse_new_id', Integer, ForeignKey('warehouse.id'))
     last_update = Column('last_update', TIMESTAMP, default=datetime.utcnow())
+    amount = Column('amount', Integer)
 
 
 
