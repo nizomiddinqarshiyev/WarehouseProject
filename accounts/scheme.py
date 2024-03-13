@@ -1,6 +1,9 @@
 from datetime import datetime, date
+from typing import Union
 
 from pydantic import BaseModel, Field
+
+from warehouse.scheme import WarehouseGetScheme
 
 
 class RegisterScheme(BaseModel):
@@ -9,8 +12,15 @@ class RegisterScheme(BaseModel):
     login: str
     email: str
     phone_number: str
+    warehouse_id: int
+    shift_id: int
     password1: str = Field(min_length=8)
     password2: str = Field(min_length=8)
+
+
+class ShiftScheme(BaseModel):
+    id: int
+    name: str
 
 
 class UserInfoScheme(BaseModel):
@@ -20,6 +30,8 @@ class UserInfoScheme(BaseModel):
     email: str
     phone: str
     last_updated: datetime
+    warehouse: Union[WarehouseGetScheme, None]
+    shift: Union[ShiftScheme, None]
 
 
 class LoginScheme(BaseModel):

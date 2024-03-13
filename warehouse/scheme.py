@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import datetime
 from typing import List
 
 from pydantic import BaseModel, Field
@@ -51,10 +51,17 @@ class CategoriesScheme(BaseModel):
     category: int = Field(lt=4, gte=1)
 
 
+class ProductScheme(BaseModel):
+    id: int
+    name: str
+    description: str
+    price: float
+
+
 class HistoryGetScheme(BaseModel):
     id: int
     warehouse_old_id: int
-    product_id: int
+    product: ProductScheme
     warehouse_new_id: int
     amount: int = Field(gte=0)
-    last_update: date
+    last_update: datetime

@@ -2,7 +2,10 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, insert, update
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from database import get_async_session
 from market.scheme import ProductGetScheme
@@ -62,16 +65,17 @@ async def add_product_location(
     session: AsyncSession = Depends(get_async_session)
 ):
     query = select(ProductLocation).where(
-        ProductLocation.warehouse_id == product_locations.warehouse_id and ProductLocation.product_id == product_locations.product_id
+        ProductLocation.product_id == product_locations.product_id and
+        ProductLocation.warehouse_id == product_locations.warehouse_id
     )
     data = await session.execute(query)
-    product = data.scalars().first()
-    if not product:
+    product_l = data.scalars().first()
+    if product_l is None:
         query = insert(ProductLocation).values(**product_locations.dict())
         await session.execute(query)
-        await session.commit()
     else:
-        await session.execute(update(ProductLocation).where(ProductLocation.id == product.id).values)
+        await session.execute(update(ProductLocation).where(ProductLocation.id == product_l.id).values(product_amount=product_locations.product_amount))
+    await session.commit()
     return {'success': True, 'message': 'Product location has been added'}
 
 
@@ -84,29 +88,49 @@ async def get_product_locations(
     return data.scalars().all()
 
 
+@warehouse_router.get('/product_locations/{id}', response_model=List[ProductLocationGetScheme])
+async def get_product_location(
+        product_id: int,
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(ProductLocation).where(ProductLocation.product_id == product_id)
+    data = await session.execute(query)
+    return data.scalars().all()
+
+
 @warehouse_router.patch("/update-product_location")
 async def update_product_location(
         data: UpdatePLScheme,
         session: AsyncSession = Depends(get_async_session)
 ):
     query_new = select(ProductLocation).where(
-        (ProductLocation.product_id == data.product_id) &
+        (ProductLocation.product_id == data.product_id) and
         (ProductLocation.warehouse_id == data.warehouse_new_id)
     )
     new_loc = await session.execute(query_new)
     new_loc_data = new_loc.scalars().first()
-    query_old = select(ProductLocation).where(
-        (ProductLocation.warehouse_id == data.warehouse_old_id) and (ProductLocation.product_id == data.product_id)
-    )
-    old_loc = await session.execute(query_old)
-    old_loc_data = old_loc.scalars().first()
+    try:
+        query_old = select(ProductLocation).where(
+            (ProductLocation.warehouse_id == data.warehouse_old_id) and (ProductLocation.product_id == data.product_id)
+        )
+        old_loc = await session.execute(query_old)
+        old_loc_data = old_loc.scalars().first()
+    except IntegrityError as e:
+        old_loc_data = None
+        raise
     is_changed = False
-    if not new_loc_data and old_loc_data.product_amount >= data.amount:
+    print(new_loc_data)
+    print(old_loc_data.product_amount)
+    if not new_loc_data and old_loc_data and old_loc_data.product_amount >= data.amount:
         await session.execute(insert(ProductLocation).values(
             warehouse_id=data.warehouse_new_id,
             product_id=data.product_id,
             product_amount=data.amount
         ))
+        query1 = update(ProductLocation).where(
+            ProductLocation.id == old_loc_data.id and ProductLocation.product_id == data.product_id).values(
+            product_amount=int(old_loc_data.product_amount - data.amount))
+        await session.execute(query1)
         await session.commit()
         is_changed = True
     elif new_loc_data and old_loc_data.product_amount >= data.amount:
@@ -117,13 +141,14 @@ async def update_product_location(
         await session.commit()
         is_changed = True
 
+    else:
+        raise HTTPException(status_code=400, detail='Bad Request')
+
     if is_changed:
         query3 = insert(ProductHistory).values(**data.dict())
         await session.execute(query3)
         await session.commit()
         return {'success': True, 'message': 'Product location has been updated'}
-    else:
-        raise HTTPException(status_code=400, detail='Bad Request')
 
 
 @warehouse_router.get('/warehouse_products', response_model=List[WarehouseProductScheme])
@@ -146,11 +171,14 @@ async def get_warehouse_products(
 
 @warehouse_router.get('/history', response_model=List[HistoryGetScheme])
 async def get_history(
-        session: AsyncSession = Depends()
+        session: AsyncSession = Depends(get_async_session)
 ):
-    query = select(ProductHistory).order_by(ProductHistory.product_id)
+    query = select(ProductHistory).options(selectinload(ProductHistory.product)).order_by(ProductHistory.product_id)
     data = await session.execute(query)
-    return data.scalars().all()
+    lis = data.scalars().all()
+    return lis
 
+
+# @warehouse_router.post('/history')
 
 
