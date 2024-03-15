@@ -65,3 +65,25 @@ class HistoryGetScheme(BaseModel):
     warehouse_new_id: int
     amount: int = Field(gte=0)
     last_update: datetime
+
+
+class ResourceGetScheme(BaseModel):
+    id: int
+    name: str
+    description: str
+
+
+class WarehouseResource(BaseModel):
+    id: int
+    resource: ResourceGetScheme
+    amount: float
+
+
+class WarehouseResourceScheme(BaseModel):
+    id: int
+    resource: ResourceGetScheme
+    warehouse: WarehouseGetScheme
+    amount: float
+
+
+

@@ -1,14 +1,15 @@
 from datetime import datetime
 from typing import List
 from fastapi import HTTPException, APIRouter, Depends
-from sqlalchemy import select, update, insert, delete
+from sqlalchemy import select, update, insert, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from accounts.utils import verify_token
 from database import get_async_session
 from market.scheme import ProductGetScheme, ProductAddScheme, ProductUpdateScheme, CategoryScheme, CategoryAddScheme, \
-    OrderScheme, CompositeAddScheme, EndProcessScheme
+    OrderScheme, CompositeAddScheme, EndProcessScheme, ReportGetScheme, ResourceGetScheme, ResourceScheme, \
+    ResourceAddScheme, UnitScheme, UnitAddScheme, CreateRecipeScheme
 from models.models import *
 from permissions import permission
 
@@ -258,26 +259,24 @@ async def start_composite(
         session: AsyncSession = Depends(get_async_session)
 ):
     try:
+        query2 = select(User).options(selectinload(User.warehouse)).where(User.id == token['user_id'])
+        user_data = await session.execute(query2)
+        user = user_data.scalars().first()
         query = insert(Composite).values(**data.dict(), employee_id=token['user_id'])
         await session.execute(query)
-        user = await session.get(User, token['user_id'])
-        print(user)
         query1 = select(ResourceLocation).where(
             (ResourceLocation.warehouse_id == user.warehouse_id) and
             (ResourceLocation.resource_id == data.resource_id))
         data2 = await session.execute(query1)
         re_loc = data2.scalars().first()
-        print(re_loc.id)
-        if re_loc and re_loc.amount >= data.resource_amount:
+        if re_loc.amount >= data.resource_amount:
             await session.execute(update(ResourceLocation).where(
                 ResourceLocation.id == re_loc.id
             ).values(amount=re_loc.amount-data.resource_amount))
             await session.commit()
             return {'success': True, **data.dict()}
-        else:
-            raise HTTPException(status_code=400, detail=f'Resource location not {user.warehouse.name} or not enough')
     except Exception as e:
-        raise HTTPException(status_code=400, detail='Request not valid')
+        raise HTTPException(status_code=400, detail=f'Resource location not in your address or not enough')
 
 
 @market_router.post('/end-composite')
@@ -287,15 +286,119 @@ async def end_composite(
         token: dict = Depends(verify_token),
         session: AsyncSession = Depends(get_async_session)
 ):
-    query = update(Composite).where(Composite.id == composite_id).values(**confirm_data.dict(), end_at=datetime.utcnow())
+    query = update(Composite).where(and_(Composite.id == composite_id, Composite.end_at == None)).values(**confirm_data.dict(), end_at=datetime.utcnow())
     data = await session.execute(query)
-    if data:
+    if data.rowcount > 0:
         await session.commit()
-        return {'success': True}
+        return {'success': True, 'message': 'Composite ended'}
     else:
-        return {'success': False}
+        return {'success': False, 'message': 'This composite already ended'}
 
-# @market_router.post(''):
+
+@market_router.get('/get-all-report', response_model=List[ReportGetScheme])
+async def get_all_report(
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(Composite).options(
+        selectinload(Composite.employee),
+        selectinload(Composite.product),
+        selectinload(Composite.resource),
+        selectinload(Composite.equipment)
+    )
+    data = await session.execute(query)
+    reports = data.scalars().all()
+    return reports
+
+
+@market_router.get('/get-all-resource', response_model=List[ResourceGetScheme])
+async def get_all_resource(
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(Resource).options(selectinload(Resource.unit))
+    data = await session.execute(query)
+    return data.scalars().all()
+
+
+@market_router.post('/add-resource')
+async def add_resource(
+        data: ResourceAddScheme,
+        session: AsyncSession = Depends(get_async_session)
+):
+    try:
+        query = insert(Resource).values(**data.dict())
+        await session.execute(query)
+        await session.commit()
+        return {'message': 'Resource added successfully', 'status': 200}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail='Something went wrong please check and try again')
+
+
+@market_router.get('/get-units', response_model=List[UnitScheme])
+async def get_units(
+        session: AsyncSession = Depends(get_async_session)
+):
+    data = await session.execute(select(Unit).order_by(Unit.id))
+    return data.scalars().all()
+
+
+@market_router.post('/add-unit')
+async def add_unit(
+        data: UnitAddScheme,
+        session: AsyncSession = Depends(get_async_session)
+):
+    try:
+        query = insert(Unit).values(**data.dict())
+        await session.execute(query)
+        await session.commit()
+        return {'message': 'success', 'status': 200}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail='Something went wrong please check and try again')
+
+
+@market_router.post('/create-recipe')
+async def create_recipe(
+    product_id: int,
+    data: List[CreateRecipeScheme],
+    session: AsyncSession = Depends(get_async_session)
+):
+
+    for resource_data in data:
+        try:
+            query = insert(Recipe).values(**resource_data.dict(), product_id=product_id)
+            await session.execute(query)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail='Something went wrong please check and try again')
+    await session.commit()
+    return {'message': 'success', 'status_code': 200}
+
+
+@market_router.get('/get-recipes')
+async def get_recipes(
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(Recipe).options(selectinload(Recipe.resource), selectinload(Recipe.product)).order_by(Recipe.product_id)
+    data = await session.execute(query)
+    return data.scalars().all()
+
+
+@market_router.get('/get-product-recipe')
+async def get_product_recipe(
+        product_id: int,
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(Recipe).options(selectinload(Recipe.resource)).where(Recipe.product_id == product_id)
+    data = await session.execute(query)
+    recipe_data = data.scalars().all()
+    resources = list(map(lambda x: {'resource': x.resource, 'amount': x.amount}, recipe_data))
+    product = await session.get(Product, product_id)
+    return {'product': product, 'recipe_data': resources}
+
+
+
+
+
+
+
 
 
 

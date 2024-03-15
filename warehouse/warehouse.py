@@ -9,10 +9,12 @@ from sqlalchemy.orm import selectinload
 
 from database import get_async_session
 from market.scheme import ProductGetScheme
-from models.models import Warehouse, WarehouseType, Product, ProductLocation, Category, Unit, ProductHistory
+from models.models import Warehouse, WarehouseType, Product, ProductLocation, Category, Unit, ProductHistory, \
+    ResourceLocation
 
 from .scheme import WarehouseGetScheme, WarehouseAddScheme, ProductLocationAddScheme, ProductLocationGetScheme, \
-    UpdatePLScheme, WarehouseProductScheme, CategoriesScheme, HistoryGetScheme
+    UpdatePLScheme, WarehouseProductScheme, CategoriesScheme, HistoryGetScheme, WarehouseResource, ResourceGetScheme, \
+    WarehouseResourceScheme
 
 warehouse_router = APIRouter()
 
@@ -116,8 +118,7 @@ async def update_product_location(
         old_loc = await session.execute(query_old)
         old_loc_data = old_loc.scalars().first()
     except IntegrityError as e:
-        old_loc_data = None
-        raise
+        raise HTTPException(status_code=401, detail=str(e))
     is_changed = False
     print(new_loc_data)
     print(old_loc_data.product_amount)
@@ -179,6 +180,38 @@ async def get_history(
     return lis
 
 
-# @warehouse_router.post('/history')
+@warehouse_router.get('/warehouse-resource', response_model=List[WarehouseResource])
+async def get_warehouse_resource(
+        warehouse_id: int,
+        session: AsyncSession = Depends(get_async_session)
+
+):
+    query = select(ResourceLocation).options(selectinload(ResourceLocation.resource)).where(ResourceLocation.warehouse_id == warehouse_id)
+    data = await session.execute(query)
+    if data:
+        return data.scalars().all()
+    else:
+        raise HTTPException(status_code=400, detail='Resource not found')
+
+
+@warehouse_router.get('/all-resources-location', response_model=List[WarehouseResourceScheme])
+async def get_all_resources_location(
+        session: AsyncSession = Depends(get_async_session)
+):
+    query = select(ResourceLocation).options(selectinload(ResourceLocation.resource), selectinload(ResourceLocation.warehouse))
+    resource_data = await session.execute(query)
+    data = resource_data.scalars().all()
+    return data
+
+
+
+
+
+
+
+
+
+
+
 
 

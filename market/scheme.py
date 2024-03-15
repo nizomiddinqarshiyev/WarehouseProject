@@ -12,6 +12,11 @@ class UnitScheme(BaseModel):
     name: str
 
 
+class UnitAddScheme(BaseModel):
+    name: str
+    code: str
+
+
 class CategoryScheme(BaseModel):
     id: int
     name: str
@@ -62,6 +67,34 @@ class EndProcessScheme(BaseModel):
     product_amount: int
 
 
+class ResourceScheme(BaseModel):
+    id: int
+    name: str
+    description: str
+    unit_id: int
+
+
+class EmployeeScheme(BaseModel):
+    id: int
+    login: str
+    firstname: str
+    lastname: str
+    email: str
+    phone: str
+    last_updated: datetime
+    warehouse_id: int
+    shift_id: int
+
+
+class ProductScheme(BaseModel):
+    id: int
+    name: str
+    description: str
+    category_id: int
+    unit_id: int
+    price: float
+
+
 class GetOrdersScheme(BaseModel):
     id: int
     user: UserInfoScheme
@@ -69,3 +102,57 @@ class GetOrdersScheme(BaseModel):
     total_price: float
     is_active: bool
     orders: List[OrderScheme]
+
+
+class ReportGetScheme(BaseModel):
+    id: int
+    product: Union[ProductScheme, None]
+    product_amount: Union[int, None]
+    employee: EmployeeScheme
+    resource: ResourceScheme
+    resource_amount: float
+    start_at: datetime
+    end_at: Union[datetime, None]
+
+
+class ResourceGetScheme(BaseModel):
+    id: int
+    name: str
+    description: str
+    unit: UnitScheme
+
+
+class ResourceAddScheme(BaseModel):
+    name: str
+    description: str
+    unit_id: int
+
+
+class CreateRecipeScheme(BaseModel):
+    resource_id: int
+    amount: float
+
+
+class GetRecipeScheme(BaseModel):
+    product: ProductScheme
+    resource: List[ResourceScheme]
+    amount: float
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

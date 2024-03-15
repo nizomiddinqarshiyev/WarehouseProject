@@ -29,6 +29,7 @@ class Product(Base):
     history = relationship('ProductHistory', back_populates='product')
     product_location = relationship('ProductLocation', back_populates='product')
     composite = relationship('Composite', back_populates='product')
+    recipe = relationship('Recipe', back_populates='product')
 
 
 class Unit(Base):
@@ -39,6 +40,7 @@ class Unit(Base):
     name = Column('name', String)
 
     product = relationship('Product', back_populates='unit')
+    resource = relationship('Resource', back_populates='unit')
 
 
 class Shift(Base):
@@ -235,9 +237,12 @@ class Resource(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
     description = Column(String)
+    unit_id = Column(Integer, ForeignKey('unit.id'))
 
     composite = relationship('Composite', back_populates='resource')
     resource_location = relationship('ResourceLocation', back_populates='resource')
+    recipe = relationship('Recipe', back_populates='resource')
+    unit = relationship('Unit', back_populates='resource')
 
 
 class ResourceLocation(Base):
@@ -250,6 +255,39 @@ class ResourceLocation(Base):
 
     warehouse = relationship('Warehouse', back_populates='resource_location')
     resource = relationship('Resource', back_populates='resource_location')
+
+
+class Recipe(Base):
+    __tablename__ = 'recipe'
+    metadata = metadata
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('product.id'))
+    resource_id = Column(Integer, ForeignKey('resource.id'))
+    amount = Column(Float)
+
+    product = relationship('Product', back_populates='recipe')
+    resource = relationship('Resource', back_populates='recipe')
+
+# class Leaving(Base):
+#     __tablename__ = 'leaving'
+#     metadata = metadata
+#     id = Column(Integer, primary_key=True, autoincrement=True)
+#     product_id = Column(Integer, ForeignKey('product.id'))
+#     warehouse_from_id = Column(Integer, ForeignKey('warehouse.id'))
+#     warehouse_to_id = Column(Integer, ForeignKey('warehouse.id'))
+#     amount = Column(Integer, default=0)
+#     product = relationship('Product', back_populates='leaving')
+#
+#
+# class Arrival(Base):
+#     __tablename__ = 'arrival'
+#     metadata = metadata
+#     id = Column(Integer, primary_key=True, autoincrement=True)
+#     product_id = Column(Integer, ForeignKey('product.id'))
+
+
+
+
 
 
 
